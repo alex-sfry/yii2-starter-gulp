@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import gulp from 'gulp';
@@ -14,86 +13,45 @@ import wpConfigDev from './webpack.dev.js';
 import wpCompiler from 'webpack';
 import { deleteAsync } from 'del';
 import rename from 'gulp-rename';
+import purgecss from '@fullhuman/postcss-purgecss';
 
 const dest = {
     root: './dist/',
     css: './dist/css/',
     js: './dist/js/',
     jsDev: './src/js/',
-    cssDev: './src/css/'
+    cssDev: './src/css/',
+    fonts: './dist/fonts/',
+    images: './dist/images/'
 };
 const src = {
     jsBsDev: './src/js/bootstrap.js',
     js: ['./src/js/main.js', './src/js/bootstrap.js'],
+    jsMove: ['./src/js/*.min.js', './src/js/*.min.js.map', '!./src/js/bootstrap.bundle.min.js'],
     scss: './src/scss/style.scss',
-    scssBs: './src/scss/bootstrap.scss',
+    scssBs: './src/scss/custom.scss',
     css: './src/css/*.css',
+    cssMove: ['./src/css/*.min.css', '!./src/css/bootstrap.min.css', '!./src/css/style.min.css'],
+    fontsMove: './src/fonts/**',
+    imagesMove: './src/images/**',
 };
-
-const htmlStrReplacements = [
-    { searchVal: /css\/bootstrap.css/g, replacement: 'css/bootstrap.min.css' },
-    { searchVal: /css\/style.css/g, replacement: 'css/style.min.css' },
-    { searchVal: /js\/bootstrap.dev.js/g, replacement: 'js/bootstrap.min.js' },
-    { searchVal: /js\/main.js/g, replacement: 'js/main.min.js' }
-];
 
 const sass = gulpSass(dartSass);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-async function replaceInFiles(files, replacements) {
-    for (const file of files) {
-        try {
-            let content = await fs.promises.readFile(file, 'utf8');
-
-            for (const item of replacements) {
-                content = content.replace(item.searchVal, item.replacement);
-            }
-
-            await fs.promises.writeFile(file, content, 'utf8');
-            console.log(`Updated: ${file}`);
-        } catch (err) {
-            console.error(`Error processing ${file}:`, err);
-        }
-    }
-}
-
-export const updateHtmlLinks = () => {
-    return (async () => {
-        const files = [
-            path.join(__dirname, 'dist/index.html')
-        ];
-
-        await replaceInFiles(files, htmlStrReplacements);
-    })();
-}
 
 export const clean = async () => {
     await deleteAsync(['dist/**']);
 }
 
-export const moveJs = () => {
-    return gulp.src(['./src/js/*.min.js', './src/js/*.min.js.map'])
+export const move = () => {
+    gulp.src(src.jsMove)
         .pipe(gulp.dest(dest.js));
-}
-
-export const moveCss = () => {
-    return gulp.src(['./src/css/*.min.css', '!./src/css/bootstrap.min.css', '!./src/css/style.min.css'])
+    gulp.src(src.cssMove)
         .pipe(gulp.dest(dest.css));
-}
-
-export const moveHtml = () => {
-    return gulp.src('./src/*.html')
-        .pipe(gulp.dest(dest.root));
-}
-
-export const moveFonts = () => {
-    return gulp.src('./src/fonts/**', { encoding: false })
-        .pipe(gulp.dest(`${dest.root}fonts/`));
-}
-
-export const moveImages = () => {
-    return gulp.src('./src/images/**', { encoding: false })
-        .pipe(gulp.dest(`${dest.root}images/`));
+    gulp.src(src.fontsMove, { encoding: false })
+        .pipe(gulp.dest(dest.fonts));
+    return gulp.src(src.imagesMove, { encoding: false })
+        .pipe(gulp.dest(dest.images));
 }
 
 export const scssBs = () => {
@@ -114,6 +72,17 @@ export const postCss = () => {
     const plugins = [
         autoprefixer(),
         cssnano({ preset: ['default', { discardComments: { removeAll: true } }] }),
+        purgecss({
+            content: [
+                '../views/**/*.php',
+                '../widgets/**/*.php',
+                '../widgets/**/*.js',
+                './src/**/*.js',
+                '!./src/js/bootstrap.bundle.min.js'
+            ],
+            safelist: ['tooltip', 'tooltip-arrow', 'bs-tooltip-auto', 'tooltip-inner'],
+            variables: false
+        })
     ];
 
     return gulp.src(src.css)
@@ -131,20 +100,19 @@ export const wp = () => {
 };
 
 export const wpDev = () => {
-    return gulp.src(src.js)
+    return gulp.src(src.jsBsDev)
         .pipe(plumber())
         .pipe(webpack(wpConfigDev, wpCompiler))
         .pipe(gulp.dest(dest.jsDev));
 };
 
 export const watch = () => {
-    gulp.watch('./src/bootstrapSCSS/*', scssBs);
-    gulp.watch('./src/scss/*', scss);
-    gulp.watch(['./src/js/*', '!./src/js/*.min.js'], wpDev);
+    gulp.watch(['./src/scss/bootstrap.scss', './src/scss/custom.scss', './src/scss/_vars.scss',], scssBs);
+    gulp.watch(['./src/scss/*', '!./src/scss/bootstrap.scss', '!./src/scss/custom.scss'], scss);
+    gulp.watch(['./src/js/bootstrap.js'], wpDev);
 };
 
 export const dev = gulp.series(gulp.parallel(scss, scssBs, wpDev), watch);
-export const move = gulp.parallel(moveJs, moveCss, moveHtml, moveFonts, moveImages);
-export const build = gulp.series(gulp.parallel(scss, scssBs), clean, gulp.parallel(move, postCss, wp), updateHtmlLinks);
+export const build = gulp.series(clean, gulp.parallel(scss, scssBs, wp), gulp.parallel(move, postCss), updateHtmlLinks);
 
 export default dev;

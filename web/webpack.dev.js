@@ -9,10 +9,7 @@ export default {
         bootstrap: './src/js/bootstrap.js',
     },
     output: {
-        publicPath: '/',
         filename: '[name].dev.js',
-        // path: path.resolve(__dirname, 'dist'),
-        // clean: false
     },
     resolve: {
         extensions: ['.js']
